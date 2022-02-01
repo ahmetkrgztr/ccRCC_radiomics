@@ -26,19 +26,21 @@ class FeatureSelection:
         roin_name: name of region of interest
         n_feature: Number of features wanted to select
         n_cv: Number of fold for cross validation
+        num_iter: number of repeatation of feature selection
     return:
         df_out_train: Selected features dataframe for training
         df_out_test: Selected features dataframe for testing
         stab: Feature selection stability
 
     """
-    ups_methods = ["ADASYN", "SMOTE", "SVMSMOTE"]
+    ups_methods = ["NONUPSAMPLED", "ADASYN", "SMOTE", "SVMSMOTE"]
 
-    def __init__(self, df_path: str, roi_name: str, n_feature: int, n_cv: int):
+    def __init__(self, df_path: str, roi_name: str, n_feature: int, n_cv: int, num_iter=100):
         self.org_df = pd.read_csv(df_path)
         self.roi_name = roi_name
         self.out_feature_num = n_feature
         self.n_cv = n_cv
+        self.num_iter = num_iter
         
         logger.info(f"Number of features at the beginning {len(self.org_df.columns)} ")
         logger.info(f"{n_feature} features will be selected")
@@ -78,38 +80,38 @@ class FeatureSelection:
     def select_important_fatures(self, X_train, y_train):
         
         feature_names = []
-        for i in tqdm(range(100)):  
+        for i in tqdm(range(self.num_iter)):  
             sel = SelectFromModel(LinearSVC(C=0.5, penalty="l1", dual=False,max_iter=4000))
             sel.fit(X_train, y_train)
             selected_feat= X_train.columns[(sel.get_support())]
             X_sel_rf = X_train[selected_feat]
 
-            cancer_back = SFS(LogisticRegression(max_iter = 1500), k_features= 15, forward=False, floating=False, scoring = 'accuracy',cv=4, n_jobs=-1)
+            cancer_back = SFS(LogisticRegression(max_iter = 1500), k_features=self.out_feature_num, forward=False, floating=False, scoring = 'accuracy',cv=4, n_jobs=-1)
             cancer_back.fit(X_sel_rf, y_train)
             feature_names.append(cancer_back.k_feature_names_)
         return feature_names
 
     def calculate_stability(self,feature_names):
-        stability_table = pd.DataFrame(np.zeros((100,self.org_df.shape[1])))
+        stability_table = pd.DataFrame(np.zeros((self.num_iter,self.org_df.shape[1])))
         stability_table.columns = self.org_df.columns
-        for i in range(100):
+        for i in range(self.num_iter):
             stability_table.iloc[i][list(feature_names[i])] = 1
         stab=getStability(np.array(stability_table))
         return stab, stability_table
     
     def save_selected_features(self,X, y, stability_table,fold=0, ups_method = "SMOTE", stab = 1):
-        selected = X[list(list(stability_table.sum().sort_values()[-self.outfeature_num:].index))].copy()
+        selected = X[list(list(stability_table.sum().sort_values()[-self.out_feature_num:].index))].copy()
         selected.index = X.index
         selected["label"] = y.copy()
-        path = os.path.join("selected_features",self.roi_name,f"FOLD{fold}_{ups_method}_stab{stab}.csv")
+        path = os.path.join("selected_features",self.roi_name,f"FOLD{fold}",f"{ups_method}_stab{int(stab)}.csv")
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        selected.to_csv(path)
+        selected.to_csv(path,index=False)
         logger.info(f"Saving df to {path}")
 
 
     def select_features(self,):
         grades = self.org_df.grade.copy()
-        features = self.org_df.drop("grade",axis=1)
+        features = self.org_df.copy().drop("grade",axis=1)
         
         skf = StratifiedKFold(n_splits=5)
         skf.get_n_splits(features, grades)
@@ -117,20 +119,23 @@ class FeatureSelection:
         logger.info(f"Selecting features of {self.roi_name}")
 
         for idx, (train_ix, test_ix) in enumerate(skf.split(features,grades)):
-            X_train, X_test = features.iloc[train_ix], features.iloc[test_ix]
-            y_train, y_test = grades.iloc[train_ix], grades.iloc[test_ix]
-
-            X_train, X_test = self.preprocess(X_train), self.preprocess(X_test)
-            X_train_p, X_test_p = X_train.copy(), X_test.copy()
-
-            logger.info(f"FOLD {self.roi_name}")
+            
             for ups_method in self.ups_methods:
+
+                X_train, X_test = features.iloc[train_ix], features.iloc[test_ix]
+                y_train, y_test = grades.iloc[train_ix], grades.iloc[test_ix]
+
+                X_train, X_test = self.preprocess(X_train), self.preprocess(X_test)
+                X_train_p, X_test_p = X_train.copy(), X_test.copy()
+
+                logger.info(f"FOLD {self.roi_name}")
                 if ups_method == "ADASYN":
                     X_train, y_train = ADASYN(sampling_strategy='auto',random_state=41,n_neighbors=5, n_jobs=1).fit_resample(X_train, y_train)
                 elif ups_method == "SMOTE":
                     X_train, y_train = SMOTE(random_state=42).fit_resample(X_train, y_train)
                 elif ups_method == "SVMSMOTE":
                     X_train, y_train = SVMSMOTE(random_state=400).fit_resample(X_train, y_train)
+
                 logger.info(f"UPSAMPLING {ups_method}")
                 
                 X_train = self.remove_constants(X_train, y_train)
