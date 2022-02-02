@@ -99,11 +99,11 @@ class FeatureSelection:
         stab=getStability(np.array(stability_table))
         return stab, stability_table
     
-    def save_selected_features(self,X, y, stability_table,fold=0, ups_method = "SMOTE", stab = 1):
+    def save_selected_features(self,X, y, stability_table,fold=0, ups_method = "SMOTE", stab = 1, tr_ts = "train"):
         selected = X[list(list(stability_table.sum().sort_values()[-self.out_feature_num:].index))].copy()
         selected.index = X.index
         selected["label"] = y.copy()
-        path = os.path.join("selected_features",self.roi_name,f"FOLD{fold}",f"{ups_method}_stab{int(stab)}.csv")
+        path = os.path.join("selected_features",self.roi_name,f"FOLD{fold}", ups_method, f"{tr_ts}_stab{int(stab)}.csv")
         os.makedirs(os.path.dirname(path), exist_ok=True)
         selected.to_csv(path,index=False)
         logger.info(f"Saving df to {path}")
@@ -119,7 +119,7 @@ class FeatureSelection:
         logger.info(f"Selecting features of {self.roi_name}")
 
         for idx, (train_ix, test_ix) in enumerate(skf.split(features,grades)):
-            
+
             for ups_method in self.ups_methods:
 
                 X_train, X_test = features.iloc[train_ix], features.iloc[test_ix]
@@ -142,8 +142,8 @@ class FeatureSelection:
                 X_train = self.remove_correlated(X_train, y_train)
                 feature_names = self.select_important_fatures(X_train, y_train)
                 stab, stability_table = self.calculate_stability(feature_names)
-                self.save_selected_features(X_train_p, y_train, stability_table,fold=idx, ups_method = ups_method, stab = stab)
-                self.save_selected_features(X_test_p, y_test, stability_table,fold=idx, ups_method = ups_method, stab = stab)
+                self.save_selected_features(X_train_p, y_train, stability_table,fold=idx, ups_method = ups_method, stab = stab, tr_ts = "train")
+                self.save_selected_features(X_test_p, y_test, stability_table,fold=idx, ups_method = ups_method, stab = stab, tr_ts="test")
 
 
         
