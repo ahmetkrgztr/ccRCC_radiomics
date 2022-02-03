@@ -13,6 +13,8 @@ from mlxtend.feature_selection import SequentialFeatureSelector as SFS
 from sklearn.linear_model     import LogisticRegression
 from tools.stability import getStability
 import os
+from collections import Counter
+
 
 
 logging.basicConfig(level=logging.INFO)
@@ -27,10 +29,7 @@ class FeatureSelection:
         n_feature: Number of features wanted to select
         n_cv: Number of fold for cross validation
         num_iter: number of repeatation of feature selection
-    return:
-        df_out_train: Selected features dataframe for training
-        df_out_test: Selected features dataframe for testing
-        stab: Feature selection stability
+
 
     """
     ups_methods = ["NONUPSAMPLED", "ADASYN", "SMOTE", "SVMSMOTE"]
@@ -103,14 +102,15 @@ class FeatureSelection:
         selected = X[list(list(stability_table.sum().sort_values()[-self.out_feature_num:].index))].copy()
         selected.index = X.index
         selected["label"] = y.copy()
-        path = os.path.join("selected_features",self.roi_name,f"FOLD{fold}", ups_method, f"{tr_ts}_stab{int(stab)}.csv")
+        path = os.path.join("selected_features",self.roi_name,f"FOLD{fold}", ups_method, f"{tr_ts}_stab{stab}.csv")
         os.makedirs(os.path.dirname(path), exist_ok=True)
         selected.to_csv(path,index=False)
+        logger.info(f"X_train and y_train shapes {selected.shape} {y.shape}")
         logger.info(f"Saving df to {path}")
 
 
     def select_features(self,):
-        grades = self.org_df.grade.copy()
+        grades = pd.DataFrame(self.org_df.grade.copy())
         features = self.org_df.copy().drop("grade",axis=1)
         
         skf = StratifiedKFold(n_splits=5)
@@ -121,14 +121,18 @@ class FeatureSelection:
         for idx, (train_ix, test_ix) in enumerate(skf.split(features,grades)):
 
             for ups_method in self.ups_methods:
+                logger.info(f"ROI {self.roi_name}")
+                logger.info(f"FOLD {idx}")
 
                 X_train, X_test = features.iloc[train_ix], features.iloc[test_ix]
                 y_train, y_test = grades.iloc[train_ix], grades.iloc[test_ix]
+                y_train, y_test = np.array(y_train.grade), np.array(y_test.grade)
 
-                X_train, X_test = self.preprocess(X_train), self.preprocess(X_test)
-                X_train_p, X_test_p = X_train.copy(), X_test.copy()
+                logger.info(f"Before upsampling X_train {sorted(Counter(y_train).items())} ")
+                logger.info(f"Before upsampling X_train {sorted(Counter(y_test).items())} ")
+                logger.info(f"Shape X_Train and y_train at tha beg. of fold  {X_train.shape, y_train.shape}")
 
-                logger.info(f"FOLD {self.roi_name}")
+                
                 if ups_method == "ADASYN":
                     X_train, y_train = ADASYN(sampling_strategy='auto',random_state=41,n_neighbors=5, n_jobs=1).fit_resample(X_train, y_train)
                 elif ups_method == "SMOTE":
@@ -136,14 +140,19 @@ class FeatureSelection:
                 elif ups_method == "SVMSMOTE":
                     X_train, y_train = SVMSMOTE(random_state=400).fit_resample(X_train, y_train)
 
+                X_train, X_test = self.preprocess(X_train), self.preprocess(X_test)
+
                 logger.info(f"UPSAMPLING {ups_method}")
+                logger.info(f"Shape X_Train and y_train after upsample {X_train.shape, y_train.shape}")
                 
                 X_train = self.remove_constants(X_train, y_train)
+                logger.info(f"Shape X_Train and y_train after remove_constants { X_train.shape, y_train.shape}")
                 X_train = self.remove_correlated(X_train, y_train)
+                logger.info(f"Shape X_Train and y_train after CCA {X_train.shape, y_train.shape}")
                 feature_names = self.select_important_fatures(X_train, y_train)
                 stab, stability_table = self.calculate_stability(feature_names)
-                self.save_selected_features(X_train_p, y_train, stability_table,fold=idx, ups_method = ups_method, stab = stab, tr_ts = "train")
-                self.save_selected_features(X_test_p, y_test, stability_table,fold=idx, ups_method = ups_method, stab = stab, tr_ts="test")
+                self.save_selected_features(X_train, y_train, stability_table,fold=idx, ups_method = ups_method, stab = stab, tr_ts = "train")
+                self.save_selected_features(X_test, y_test, stability_table,fold=idx, ups_method = ups_method, stab = stab, tr_ts="test")
 
 
         
