@@ -84,7 +84,7 @@ class FeatureSelection:
             sel.fit(X_train, y_train)
             selected_feat= X_train.columns[(sel.get_support())]
             X_sel_rf = X_train[selected_feat]
-
+            #assign "cv" in SFS for inner cross validation
             cancer_back = SFS(LogisticRegression(max_iter = 1500), k_features=self.out_feature_num, forward=False, floating=False, scoring = 'accuracy',cv=4, n_jobs=-1)
             cancer_back.fit(X_sel_rf, y_train)
             feature_names.append(cancer_back.k_feature_names_)
