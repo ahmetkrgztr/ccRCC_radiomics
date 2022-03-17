@@ -1,0 +1,33 @@
+# This is a non-active comment on a separate line
+imageType:
+    Original: {}
+    LoG: {'sigma' : [2.0, 4.0, 6.0]}  # This is a non active comment on a line with active code preceding it.
+    Wavelet: {}
+
+featureClass:
+  shape2D:
+  shape:
+  firstorder:
+  glcm:
+  glrlm:
+  glszm:
+  gldm:
+  ngtdm:
+
+setting:
+    resampledPixelSpacing:
+    # Normalization:
+    normalize: True
+    normalizeScale: 1
+
+    # Resampling:
+    # first dimensions always correspond to in-plane resolution.
+    # Z-plane resolution should not be modified to avoid mask errors (> than 1 slice after resampling)
+    interpolator: 'sitkBSpline'
+    force2D: false
+    force2Ddimension: 0
+
+    # Image discretization:
+    # This parameter should be estimated by analyzing the dataset firstorder range and chosen to be as close as possible to the 30-130 range. 
+    binWidth: 0.01
+    label: 2
